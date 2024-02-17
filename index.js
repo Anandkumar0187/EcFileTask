@@ -94,23 +94,45 @@ app.use('/user-register', express.static(path.join(__dirname, 'uploads')));
 
 
 // A User should verify themselves by putting the correct OTP which is sent to their email and phone.
-app.post("/email-phone-verification",async(req,res)=>{
+app.post("/email-verification",async(req,res)=>{
     try {
-        const {email,phone, otp} = req.body;
+        const {email, email_otp} = req.body;
     
-        const data = await User.findOne({email,phone});
+        const data = await User.findOne({email});
         // console.log("user",data);
         if (!data) {
           return res.status(404).json({ error: 'data not found' });
         }
     
-        if (data.otp !== otp || data.otpExpires < new Date()) {
+        if (data.email_otp !== email_otp || data.email_otpExpires < new Date()) {
           return res.status(401).json({ error: 'Invalid or expired OTP' });
         }
-        data.verified = true;
+        data.email_verified = true;
         await data.save();
     
-        res.status(200).json({ message: 'User verified successfully' });
+        res.status(200).json({ message: 'Email verified successfully' });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+});
+app.post("/phone-verification",async(req,res)=>{
+    try {
+        const {phone, phone_otp} = req.body;
+    
+        const data = await User.findOne({phone});
+        // console.log("user",data);
+        if (!data) {
+          return res.status(404).json({ error: 'data not found' });
+        }
+    
+        if (data.phone_otp !== phone_otp || data.phone_otpExpires < new Date()) {
+          return res.status(401).json({ error: 'Invalid or expired OTP' });
+        }
+        data.phone_verified = true;
+        await data.save();
+    
+        res.status(200).json({ message: 'Phone number verified successfully' });
       } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
@@ -122,48 +144,50 @@ app.post("/email-phone-verification",async(req,res)=>{
 app.post("/user-login",async(req,res)=>{
     const {email, phone, password} = req.body;
     try {
-        const data = await User.findOne({email});
-    const comparePass = await bcrypt.compare(password,data.password)
+        const data = await User.findOne({email: email,phone : phone});
+        const comparePass = await bcrypt.compare(password,data.password)
     
-    if(data && comparePass){
-        const otp = generateOTP();
-        const transporter = nodeMailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: 'anand882kumar@gmail.com',
-                pass: 'csmy weod mhky pjqt'
-                }
-        });
+        if(data && comparePass){
+            const emailOTP = generateOTP();
+            const transporter = nodeMailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: 'anand882kumar@gmail.com',
+                    pass: 'csmy weod mhky pjqt'
+                    }
+            });
+            
+            const mailOptions = {
+                from: 'anand882kumar@gmail.com',
+                to: data.email,
+                subject: 'Email Verification',
+                text: `Your OTP for email verification is: ${emailOTP}. It is valid up to 5 minutes.`
+            };
         
-        const mailOptions = {
-            from: 'anand882kumar@gmail.com',
-            to: data.email,
-            subject: 'Email Verification',
-            text: `Your OTP for email verification is: ${otp}. It is valid up to 5 minutes.`
-          };
-    
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-              return console.error(error);
-            }
-            console.log('Email sent: ' + info.response);
-          });
-    
-        twilio.messages.create({
-            body: `Your OTP for phone verification is: ${otp}. It is valid up to 5 minutes.`,
-            from: '+19706144083',
-            to: `+91${data.phone}`,
-          })
-          .then(message => console.log('OTP sent:', message.sid))
-          .catch(error => console.error('Error sending OTP:', error));
+            transporter.sendMail(mailOptions, (error, info) => {
+                if (error) {
+                return console.error(error);
+                }
+                console.log('Email sent: ' + info.response);
+            });
+            const phoneOTP = generateOTP()
+            twilio.messages.create({
+                body: `Your OTP for phone verification is: ${phoneOTP}. It is valid up to 5 minutes.`,
+                from: '+19706144083',
+                to: `+91${data.phone}`,
+            })
+            .then(message => console.log('OTP sent:', message.sid))
+            .catch(error => console.error('Error sending OTP:', error));
 
-          data.otp = otp;
-          data.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-          await data.save();
-          res.status(200).send({
-            msg : "Please check your mail and phone number to verify you."
-          })
-    }
+            data.email_otp = emailOTP;
+            data.email_otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+            data.phone_otp = phoneOTP;
+            data.phone_otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+            await data.save();
+            res.status(200).send({
+                msg : "Please check your mail and phone number to verify you."
+            })
+        }
     } catch (error) {
         res.status(500).send({
             msg : error.message
