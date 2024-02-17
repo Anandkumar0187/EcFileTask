@@ -89,9 +89,6 @@ app.post('/user-register',upload.single('image'),async(req,res)=>{
     })
    }
 })
-app.use('/user-register', express.static(path.join(__dirname, 'uploads')));
-
-
 
 // A User should verify themselves by putting the correct OTP which is sent to their email and phone.
 app.post("/email-verification",async(req,res)=>{
